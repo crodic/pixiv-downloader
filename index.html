@@ -121,13 +121,21 @@
 
         <script>
             async function downloadImages() {
-                const session = document.getElementById('phpsession').value;
+                let session = document.getElementById('phpsession').value;
                 const imageId = document.getElementById('imageId').value;
                 const folderName = document.getElementById('folderName').value;
                 const mode = document.getElementById('mode').value;
                 const errorDiv = document.getElementById('error');
                 const loadingDiv = document.getElementById('loading');
                 const imageGrid = document.getElementById('imageGrid');
+
+                if (session) {
+                    localStorage.setItem('PHPSESSID', session);
+                }
+
+                if (!session && localStorage.getItem('PHPSESSID')) {
+                    session = localStorage.getItem('PHPSESSID');
+                }
 
                 if (!imageId || !folderName) {
                     errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin';

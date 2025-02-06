@@ -3,7 +3,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-require("dotenv").config()
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
