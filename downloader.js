@@ -116,7 +116,7 @@ app.post('/download', async (req, res) => {
                 fs.mkdirSync(downloadsPath);
             }
 
-            const downloadPath = path.join(downloadsPath, folderName);
+            const downloadPath = path.join(downloadsPath, encodeURIComponent(folderName));
             if (!fs.existsSync(downloadPath)) {
                 fs.mkdirSync(downloadPath);
             }
