@@ -3,10 +3,10 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const archiver = require('archiver');
+require("dotenv").config()
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const PHPSESSID = '33153236_lV0f640d75ruM1VNs0n9m8SXM0tbMGRG';
 
