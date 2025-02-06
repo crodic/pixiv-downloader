@@ -52,6 +52,8 @@ async function getArtworkInfo(imageId, session) {
     };
 }
 
+const sanitizeFilename = (name) => name.replace(/[\/\\:*?"<>|]/g, '_');
+
 // Endpoint mới để tải ảnh trực tiếp qua trình duyệt
 app.get('/download-image/:imageId/:page', async (req, res) => {
     try {
@@ -107,6 +109,7 @@ app.post('/download', async (req, res) => {
             throw new Error('Tên folder không được để trống');
         }
 
+        let folderNameResult = sanitizeFilename(folderName);
         const artworkInfo = await getArtworkInfo(imageId, session);
         const pageCount = artworkInfo.pageCount;
 
@@ -116,9 +119,7 @@ app.post('/download', async (req, res) => {
                 fs.mkdirSync(downloadsPath);
             }
 
-            const sanitizeFilename = (name) => name.replace(/[\/\\:*?"<>|]/g, '_');
-
-            const downloadPath = path.join(downloadsPath, sanitizeFilename(folderName));
+            const downloadPath = path.join(downloadsPath, folderNameResult);
             if (!fs.existsSync(downloadPath)) {
                 fs.mkdirSync(downloadPath);
             }
@@ -136,7 +137,7 @@ app.post('/download', async (req, res) => {
                 for (let i = 0; i < pagesInfo.data.body.length; i++) {
                     try {
                         const imageUrl = pagesInfo.data.body[i].urls.original;
-                        const fileName = `${folderName}_${imageId}_p${i}.jpg`;
+                        const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
                         const filePath = path.join(downloadPath, fileName);
 
                         if (!fs.existsSync(filePath)) {
@@ -163,7 +164,7 @@ app.post('/download', async (req, res) => {
                         results.push({
                             page: i,
                             fileName: fileName,
-                            path: `/downloads/${folderName}/${fileName}`,
+                            path: `/downloads/${folderNameResult}/${fileName}`,
                         });
                     } catch (error) {
                         errors.push(`Lỗi khi tải ảnh trang ${i}: ${error.message}`);
@@ -173,7 +174,7 @@ app.post('/download', async (req, res) => {
                 // Trường hợp chỉ có một ảnh
                 try {
                     const imageUrl = artworkInfo.urls.original;
-                    const fileName = `${folderName}_${imageId}_p0.jpg`;
+                    const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
                     const filePath = path.join(downloadPath, fileName);
 
                     if (!fs.existsSync(filePath)) {
@@ -200,7 +201,7 @@ app.post('/download', async (req, res) => {
                     results.push({
                         page: 0,
                         fileName: fileName,
-                        path: `/downloads/${folderName}/${fileName}`,
+                        path: `/downloads/${folderNameResult}/${fileName}`,
                     });
                 } catch (error) {
                     errors.push(`Lỗi khi tải ảnh: ${error.message}`);
@@ -209,7 +210,7 @@ app.post('/download', async (req, res) => {
 
             res.json({
                 success: true,
-                folderName: folderName,
+                folderName: folderNameResult,
                 imageId: imageId,
                 title: artworkInfo.title,
                 totalPages: pageCount,
@@ -218,7 +219,7 @@ app.post('/download', async (req, res) => {
             });
         } else {
             // Mode browser: trước đây bạn tạo file ZIP trên ổ đĩa, giờ thay bằng streaming
-            const zipFileName = `${folderName}_${imageId}.zip`;
+            const zipFileName = `${folderNameResult}_${imageId}.zip`;
             // Thiết lập header cho file ZIP
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`);
             res.setHeader('Content-Type', 'application/zip');
@@ -237,7 +238,7 @@ app.post('/download', async (req, res) => {
                 );
                 for (let i = 0; i < pagesInfo.data.body.length; i++) {
                     const imageUrl = pagesInfo.data.body[i].urls.original;
-                    const fileName = `${folderName}_${imageId}_p${i}.jpg`;
+                    const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
                     const response = await axios({
                         method: 'get',
                         url: imageUrl,
@@ -251,7 +252,7 @@ app.post('/download', async (req, res) => {
                 }
             } else {
                 const imageUrl = artworkInfo.urls.original;
-                const fileName = `${folderName}_${imageId}_p0.jpg`;
+                const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
                 const response = await axios({
                     method: 'get',
                     url: imageUrl,
