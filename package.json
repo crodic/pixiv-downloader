@@ -1,0 +1,18 @@
+{
+    "name": "pixiv",
+    "version": "1.0.0",
+    "description": "",
+    "main": "downloader.js",
+    "scripts": {
+        "start": "node downloader.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "dependencies": {
+        "archiver": "^7.0.1",
+        "axios": "^1.7.9",
+        "express": "^4.21.2"
+    }
+}

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pixiv Image Downloader</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            .container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .input-group {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .input-field {
+                flex: 1;
+                min-width: 200px;
+            }
+            input,
+            select {
+                padding: 8px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            button {
+                padding: 8px 16px;
+                background-color: #0066cc;
+                color: white;
+                border: none;
+                cursor: pointer;
+                min-width: 100px;
+            }
+            button:hover {
+                background-color: #0052a3;
+            }
+            .image-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                gap: 20px;
+                margin-top: 20px;
+            }
+            .image-container {
+                position: relative;
+            }
+            .image-preview {
+                width: 100%;
+                height: auto;
+                display: block;
+            }
+            .file-name {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 4px;
+                font-size: 0.8em;
+                max-width: 90%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .error {
+                color: red;
+                margin-top: 10px;
+            }
+            .info {
+                background-color: #f5f5f5;
+                padding: 15px;
+                border-radius: 4px;
+                margin-top: 10px;
+            }
+            .download-links {
+                margin-top: 20px;
+            }
+            .loading {
+                display: none;
+                margin-top: 10px;
+                text-align: center;
+                color: #0066cc;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Pixiv Image Downloader</h1>
+            <div class="input-group">
+                <div class="input-field">
+                    <input type="text" id="phpsession" placeholder="Nhập cookie session" />
+                </div>
+                <div class="input-field">
+                    <input type="text" id="imageId" placeholder="Nhập Pixiv Image ID" />
+                </div>
+                <div class="input-field">
+                    <input type="text" id="folderName" placeholder="Nhập tên folder" />
+                </div>
+                <div class="input-field">
+                    <select id="mode">
+                        <option value="server">Server Mode</option>
+                        <option value="browser">Browser Mode</option>
+                    </select>
+                </div>
+                <button id="downloadBtn" onclick="downloadImages()">Tải ảnh</button>
+            </div>
+            <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi...</div>
+            <div id="info" class="info"></div>
+            <div id="error" class="error"></div>
+            <div id="imageGrid" class="image-grid"></div>
+            <div id="downloadLinks" class="download-links"></div>
+        </div>
+
+        <script>
+            async function downloadImages() {
+                const session = document.getElementById('phpsession').value;
+                const imageId = document.getElementById('imageId').value;
+                const folderName = document.getElementById('folderName').value;
+                const mode = document.getElementById('mode').value;
+                const errorDiv = document.getElementById('error');
+                const loadingDiv = document.getElementById('loading');
+                const imageGrid = document.getElementById('imageGrid');
+
+                if (!imageId || !folderName) {
+                    errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin';
+                    return;
+                }
+
+                errorDiv.textContent = '';
+                loadingDiv.style.display = 'block';
+
+                try {
+                    const res = await fetch('/download', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageId, folderName, mode, session }),
+                    });
+
+                    // Nếu mode là browser, server stream file ZIP nên dùng blob
+                    if (mode === 'browser') {
+                        if (!res.ok) {
+                            const errText = await res.text();
+                            throw new Error(errText);
+                        }
+                        const blob = await res.blob();
+                        const downloadUrl = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = `${folderName}_${imageId}.zip`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    } else {
+                        // Nếu mode là server, server trả về JSON thông tin file đã tải
+                        const data = await res.json();
+                        // Xử lý dữ liệu JSON (ví dụ hiển thị thông tin ảnh, link tải, ...)
+                        if (data.errors && data.errors.length > 0) {
+                            error.textContent = data.errors.join('\n');
+                        }
+
+                        info.innerHTML = `
+                            <h3>Thông tin tải xuống</h3>
+                            <p>Folder: ${data.folderName}</p>
+                            <p>Image ID: ${data.imageId}</p>
+                            <p>Số ảnh đã tải: ${data.downloadedFiles.length}/${data.totalPages}</p>
+                        `;
+                        console.log('Trigger');
+                        // Hiển thị tất cả các ảnh đã tải
+                        data.downloadedFiles.forEach((file) => {
+                            const container = document.createElement('div');
+                            container.className = 'image-container';
+
+                            const img = document.createElement('img');
+                            img.src = file.path;
+                            img.className = 'image-preview';
+
+                            const fileName = document.createElement('div');
+                            fileName.className = 'file-name';
+                            fileName.textContent = file.fileName;
+
+                            container.appendChild(img);
+                            container.appendChild(fileName);
+                            imageGrid.appendChild(container);
+                        });
+                    }
+                } catch (err) {
+                    errorDiv.textContent = err.message;
+                } finally {
+                    loadingDiv.style.display = 'none';
+                }
+            }
+        </script>
+
+        <script>
+            // async function downloadImages() {
+            //     const imageId = document.getElementById('imageId').value;
+            //     const folderName = document.getElementById('folderName').value;
+            //     const mode = document.getElementById('mode').value;
+            //     const error = document.getElementById('error');
+            //     const info = document.getElementById('info');
+            //     const downloadLinks = document.getElementById('downloadLinks');
+            //     const loading = document.getElementById('loading');
+            //     const downloadBtn = document.getElementById('downloadBtn');
+
+            //     try {
+            //         if (!imageId || !folderName) {
+            //             throw new Error('Vui lòng điền đầy đủ thông tin');
+            //         }
+
+            //         error.textContent = '';
+            //         info.innerHTML = '';
+            //         downloadLinks.innerHTML = '';
+            //         loading.style.display = 'block';
+            //         downloadBtn.disabled = true;
+
+            //         const response = await fetch('/download', {
+            //             method: 'POST',
+            //             headers: { 'Content-Type': 'application/json' },
+            //             body: JSON.stringify({ imageId, folderName, mode }),
+            //         });
+
+            //         if (!response.ok) {
+            //             const errorData = await response.json();
+            //             throw new Error(errorData.error || 'Không thể tải ảnh');
+            //         }
+
+            //         const data = await response.json();
+
+            //         info.innerHTML = `
+            //             <h3>${data.title}</h3>
+            //             <p>Folder: ${data.folderName}</p>
+            //             <p>Image ID: ${data.imageId}</p>
+            //             <p>Số ảnh: ${data.totalPages}</p>
+            //         `;
+
+            //         if (mode === 'browser' && data.zipDownloadUrl) {
+            //             const link = document.createElement('a');
+            //             link.href = data.zipDownloadUrl;
+            //             link.className = 'download-link';
+            //             link.textContent = 'Tải file ZIP';
+            //             link.target = '_blank';
+            //             downloadLinks.appendChild(link);
+            //         }
+            //     } catch (err) {
+            //         error.textContent = err.message;
+            //         info.innerHTML = '';
+            //     } finally {
+            //         loading.style.display = 'none';
+            //         downloadBtn.disabled = false;
+            //     }
+            // }
+        </script>
+    </body>
+</html>
