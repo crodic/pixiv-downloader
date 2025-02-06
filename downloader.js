@@ -116,7 +116,9 @@ app.post('/download', async (req, res) => {
                 fs.mkdirSync(downloadsPath);
             }
 
-            const downloadPath = path.join(downloadsPath, encodeURIComponent(folderName));
+            const sanitizeFilename = (name) => name.replace(/[\/\\:*?"<>|]/g, '_');
+
+            const downloadPath = path.join(downloadsPath, sanitizeFilename(folderName));
             if (!fs.existsSync(downloadPath)) {
                 fs.mkdirSync(downloadPath);
             }
