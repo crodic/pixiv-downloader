@@ -32,12 +32,6 @@ const getConfig = (session = PHPSESSID) => {
 
 app.use(express.json());
 
-const validateConfig = (session) => {
-    if (!session) {
-        throw new Error('PHPSESSID không được cấu hình. Vui lòng thêm cookie hợp lệ.');
-    }
-};
-
 async function getArtworkInfo(imageId, session) {
     const response = await axios.get(`https://www.pixiv.net/ajax/illust/${imageId}`, getConfig(session));
 
