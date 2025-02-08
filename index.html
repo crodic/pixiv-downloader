@@ -110,6 +110,13 @@
             .download-button {
                 margin-right: 10px;
             }
+            /* Style cho phần phân trang */
+            #paginationControls {
+                display: none;
+                margin-top: 10px;
+                gap: 10px;
+                align-items: center;
+            }
         </style>
     </head>
     <body>
@@ -131,8 +138,16 @@
                         <option value="browser">Browser Mode</option>
                     </select>
                 </div>
+                <!-- Thêm các input cho phân trang (chỉ áp dụng với server mode) -->
+                <div class="input-field">
+                    <input type="number" id="page" placeholder="Số trang (mặc định 1)" min="1" />
+                </div>
+                <div class="input-field">
+                    <input type="number" id="limit" placeholder="Số ảnh mỗi trang (mặc định 20)" min="1" />
+                </div>
                 <button id="downloadBtn" onclick="downloadImages()">Tải ảnh</button>
             </div>
+
             <div id="downloadOptions" class="download-options">
                 <button onclick="downloadSelectedAsZip()" class="download-button">Download Selected as ZIP</button>
                 <button onclick="downloadSelectedIndividually()" class="download-button">
@@ -140,6 +155,13 @@
                 </button>
                 <button onclick="selectAll()" class="download-button">Select All</button>
                 <button onclick="deselectAll()" class="download-button">Deselect All</button>
+            </div>
+
+            <!-- Các nút điều hướng trang cho server mode -->
+            <div id="paginationControls">
+                <button onclick="prevPage()">Previous</button>
+                <span id="paginationInfo"></span>
+                <button onclick="nextPage()">Next</button>
             </div>
 
             <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi...</div>
@@ -150,6 +172,8 @@
 
         <script>
             let downloadedImages = [];
+            // Lưu trữ thông tin phân trang từ server
+            let currentPagination = null;
 
             function selectAll() {
                 const checkboxes = document.querySelectorAll('.select-checkbox');
@@ -177,11 +201,9 @@
 
                 const byteCharacters = atob(base64Content);
                 const byteNumbers = new Array(byteCharacters.length);
-
                 for (let i = 0; i < byteCharacters.length; i++) {
                     byteNumbers[i] = byteCharacters.charCodeAt(i);
                 }
-
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], { type: 'image/jpeg' });
 
@@ -244,10 +266,12 @@
             }
 
             async function downloadImages() {
-                let session = document.getElementById('phpsession').value;
+                let session = document.getElementById('phpsession').value || localStorage.getItem('PHPSESSID') || '';
                 const imageId = document.getElementById('imageId').value;
                 const folderName = document.getElementById('folderName').value;
                 const mode = document.getElementById('mode').value;
+                const page = document.getElementById('page').value;
+                const limit = document.getElementById('limit').value;
                 const errorDiv = document.getElementById('error');
                 const loadingDiv = document.getElementById('loading');
                 const imageGrid = document.getElementById('imageGrid');
@@ -255,10 +279,6 @@
 
                 if (session) {
                     localStorage.setItem('PHPSESSID', session);
-                }
-
-                if (!session && localStorage.getItem('PHPSESSID')) {
-                    session = localStorage.getItem('PHPSESSID');
                 }
 
                 if (!imageId || !folderName) {
@@ -269,12 +289,25 @@
                 errorDiv.textContent = '';
                 loadingDiv.style.display = 'block';
                 imageGrid.innerHTML = '';
+                info.innerHTML = '';
+                document.getElementById('downloadOptions').classList.remove('visible');
+                document.getElementById('paginationControls').style.display = 'none';
 
                 try {
+                    const bodyData = { imageId, folderName, mode, session };
+                    if (mode === 'server') {
+                        // Nếu chạy ở server mode thì thêm các tham số phân trang
+                        if (page) {
+                            bodyData.page = page;
+                        }
+                        if (limit) {
+                            bodyData.limit = limit;
+                        }
+                    }
                     const res = await fetch('/download', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ imageId, folderName, mode, session }),
+                        body: JSON.stringify(bodyData),
                     });
 
                     if (mode === 'server') {
@@ -282,18 +315,35 @@
                         if (data.errors && data.errors.length > 0) {
                             errorDiv.textContent = data.errors.join('\n');
                         }
-
                         downloadedImages = data.images;
 
-                        info.innerHTML = `
-                            <h3>Thông tin tải xuống</h3>
-                            <p>Folder: ${data.folderName}</p>
-                            <p>Image ID: ${data.imageId}</p>
-                            <p>Số ảnh đã tải: ${data.images.length}/${data.totalPages}</p>
-                        `;
+                        // Nếu có thông tin phân trang, cập nhật giao diện
+                        if (data.pagination) {
+                            currentPagination = data.pagination;
+                            info.innerHTML = `
+                <h3>Thông tin tải xuống</h3>
+                <p>Folder: ${data.folderName}</p>
+                <p>Image ID: ${data.imageId}</p>
+                <p>Tổng ảnh: ${data.pagination.totalImages}</p>
+                <p>Trang: ${data.pagination.currentPage} / ${data.pagination.totalPages}</p>
+              `;
+                            if (data.pagination.totalPages > 1) {
+                                document.getElementById('paginationControls').style.display = 'flex';
+                                document.getElementById(
+                                    'paginationInfo'
+                                ).textContent = `Trang ${data.pagination.currentPage} / ${data.pagination.totalPages}`;
+                            }
+                        } else {
+                            info.innerHTML = `
+                <h3>Thông tin tải xuống</h3>
+                <p>Folder: ${data.folderName}</p>
+                <p>Image ID: ${data.imageId}</p>
+                <p>Số ảnh đã tải: ${data.images.length}</p>
+              `;
+                        }
 
-                        // Hiển thị ảnh từ base64
-                        data.images.forEach((image, index) => {
+                        // Hiển thị ảnh
+                        downloadedImages.forEach((image, index) => {
                             const container = document.createElement('div');
                             container.className = 'image-container';
 
@@ -307,18 +357,18 @@
                             img.src = image.base64Data;
                             img.className = 'image-preview';
 
-                            const fileName = document.createElement('div');
-                            fileName.className = 'file-name';
-                            fileName.textContent = image.fileName;
+                            const fileNameDiv = document.createElement('div');
+                            fileNameDiv.className = 'file-name';
+                            fileNameDiv.textContent = image.fileName;
 
                             container.appendChild(checkbox);
                             container.appendChild(img);
-                            container.appendChild(fileName);
+                            container.appendChild(fileNameDiv);
                             imageGrid.appendChild(container);
                         });
-
                         document.getElementById('downloadOptions').classList.add('visible');
                     } else {
+                        // Browser mode: tải file ZIP trực tiếp
                         if (!res.ok) {
                             const errText = await res.text();
                             throw new Error(errText);
@@ -339,8 +389,26 @@
                     loadingDiv.style.display = 'none';
                 }
             }
+
+            // Hàm xử lý khi bấm "Previous"
+            function prevPage() {
+                if (currentPagination && currentPagination.currentPage > 1) {
+                    const newPage = currentPagination.currentPage - 1;
+                    document.getElementById('page').value = newPage;
+                    downloadImages();
+                }
+            }
+
+            // Hàm xử lý khi bấm "Next"
+            function nextPage() {
+                if (currentPagination && currentPagination.currentPage < currentPagination.totalPages) {
+                    const newPage = currentPagination.currentPage + 1;
+                    document.getElementById('page').value = newPage;
+                    downloadImages();
+                }
+            }
         </script>
-        <!-- Add JSZip library for client-side ZIP creation -->
+        <!-- Thêm thư viện JSZip để tạo file ZIP ở client -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     </body>
 </html>

@@ -113,9 +113,161 @@ app.post('/download-selected', async (req, res) => {
     }
 });
 
+// app.post('/download', async (req, res) => {
+//     try {
+//         const { imageId, folderName, mode = 'server' } = req.body;
+//         const session = req.body.session;
+
+//         if (!['server', 'browser'].includes(mode)) {
+//             throw new Error('Chế độ không hợp lệ. Dùng "server" hoặc "browser"');
+//         }
+
+//         if (!folderName) {
+//             throw new Error('Tên folder không được để trống');
+//         }
+
+//         let folderNameResult = sanitizeFilename(folderName);
+//         const artworkInfo = await getArtworkInfo(imageId, session);
+//         const pageCount = artworkInfo.pageCount;
+
+//         if (mode === 'server') {
+//             const results = [];
+//             const errors = [];
+
+//             // Xử lý nhiều trang
+//             if (pageCount > 1) {
+//                 const pagesInfo = await axios.get(
+//                     `https://www.pixiv.net/ajax/illust/${imageId}/pages`,
+//                     getConfig(session)
+//                 );
+
+//                 for (let i = 0; i < pagesInfo.data.body.length; i++) {
+//                     try {
+//                         const imageUrl = pagesInfo.data.body[i].urls.original;
+//                         const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
+
+//                         // Tải ảnh và convert sang base64
+//                         const response = await axios({
+//                             method: 'get',
+//                             url: imageUrl,
+//                             responseType: 'arraybuffer',
+//                             headers: {
+//                                 ...getConfig(session).headers,
+//                                 Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+//                             },
+//                         });
+
+//                         const base64Image = Buffer.from(response.data, 'binary').toString('base64');
+
+//                         results.push({
+//                             page: i,
+//                             fileName: fileName,
+//                             base64Data: `data:image/jpeg;base64,${base64Image}`,
+//                         });
+//                     } catch (error) {
+//                         errors.push(`Lỗi khi tải ảnh trang ${i}: ${error.message}`);
+//                     }
+//                 }
+//             } else {
+//                 // Xử lý một trang
+//                 try {
+//                     const imageUrl = artworkInfo.urls.original;
+//                     const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
+
+//                     const response = await axios({
+//                         method: 'get',
+//                         url: imageUrl,
+//                         responseType: 'arraybuffer',
+//                         headers: {
+//                             ...getConfig(session).headers,
+//                             Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+//                         },
+//                     });
+
+//                     const base64Image = Buffer.from(response.data, 'binary').toString('base64');
+
+//                     results.push({
+//                         page: 0,
+//                         fileName: fileName,
+//                         base64Data: `data:image/jpeg;base64,${base64Image}`,
+//                     });
+//                 } catch (error) {
+//                     errors.push(`Lỗi khi tải ảnh: ${error.message}`);
+//                 }
+//             }
+
+//             res.json({
+//                 success: true,
+//                 folderName: folderNameResult,
+//                 imageId: imageId,
+//                 title: artworkInfo.title,
+//                 totalPages: pageCount,
+//                 images: results,
+//                 errors: errors,
+//             });
+//         } else {
+//             // Mode browser: trước đây bạn tạo file ZIP trên ổ đĩa, giờ thay bằng streaming
+//             const zipFileName = `${folderNameResult}_${imageId}.zip`;
+//             // Thiết lập header cho file ZIP
+//             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`);
+//             res.setHeader('Content-Type', 'application/zip');
+
+//             // Tạo archive và pipe trực tiếp vào response
+//             const archive = require('archiver')('zip', { zlib: { level: 9 } });
+//             archive.on('error', (err) => {
+//                 throw err;
+//             });
+//             archive.pipe(res);
+
+//             if (pageCount > 1) {
+//                 const pagesInfo = await axios.get(
+//                     `https://www.pixiv.net/ajax/illust/${imageId}/pages`,
+//                     getConfig(session)
+//                 );
+//                 for (let i = 0; i < pagesInfo.data.body.length; i++) {
+//                     const imageUrl = pagesInfo.data.body[i].urls.original;
+//                     const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
+//                     const response = await axios({
+//                         method: 'get',
+//                         url: imageUrl,
+//                         responseType: 'arraybuffer',
+//                         headers: {
+//                             ...getConfig(session).headers,
+//                             Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+//                         },
+//                     });
+//                     archive.append(response.data, { name: fileName });
+//                 }
+//             } else {
+//                 const imageUrl = artworkInfo.urls.original;
+//                 const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
+//                 const response = await axios({
+//                     method: 'get',
+//                     url: imageUrl,
+//                     responseType: 'arraybuffer',
+//                     headers: {
+//                         ...getConfig(session).headers,
+//                         Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+//                     },
+//                 });
+//                 archive.append(response.data, { name: fileName });
+//             }
+
+//             // Khi tất cả ảnh đã được thêm vào archive, finalize để kết thúc stream
+//             archive.finalize();
+//         }
+//     } catch (error) {
+//         console.error('Error:', error.message);
+//         res.status(500).json({
+//             error: error.message,
+//             details: 'Vui lòng kiểm tra thông tin nhập vào',
+//         });
+//     }
+// });
+
 app.post('/download', async (req, res) => {
     try {
-        const { imageId, folderName, mode = 'server' } = req.body;
+        const { imageId, folderName, mode = 'server', page, limit } = req.body;
         const session = req.body.session;
 
         if (!['server', 'browser'].includes(mode)) {
@@ -126,27 +278,43 @@ app.post('/download', async (req, res) => {
             throw new Error('Tên folder không được để trống');
         }
 
+        // Làm sạch tên folder
         let folderNameResult = sanitizeFilename(folderName);
         const artworkInfo = await getArtworkInfo(imageId, session);
-        const pageCount = artworkInfo.pageCount;
+        const artworkPageCount = artworkInfo.pageCount;
 
         if (mode === 'server') {
             const results = [];
             const errors = [];
 
-            // Xử lý nhiều trang
-            if (pageCount > 1) {
-                const pagesInfo = await axios.get(
+            // Nếu ảnh đa trang thì áp dụng phân trang
+            if (artworkPageCount > 1) {
+                const pagesResponse = await axios.get(
                     `https://www.pixiv.net/ajax/illust/${imageId}/pages`,
                     getConfig(session)
                 );
+                const allPages = pagesResponse.data.body;
+                const totalImages = allPages.length;
+                // Thiết lập phân trang (mặc định trang 1, mỗi trang 20 ảnh)
+                const currentPage = page && Number(page) > 0 ? Number(page) : 1;
+                const perPage = limit && Number(limit) > 0 ? Number(limit) : 20;
+                const totalPages = Math.ceil(totalImages / perPage);
 
-                for (let i = 0; i < pagesInfo.data.body.length; i++) {
+                if (currentPage > totalPages) {
+                    throw new Error(`Trang ${currentPage} không tồn tại. Tổng số trang là ${totalPages}.`);
+                }
+
+                // Lấy ra mảng con theo trang hiện tại
+                const paginatedPages = allPages.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+                // Tải từng ảnh trong trang hiện tại
+                for (let i = 0; i < paginatedPages.length; i++) {
                     try {
-                        const imageUrl = pagesInfo.data.body[i].urls.original;
-                        const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
+                        // Tính index thực của ảnh trong toàn bộ bộ ảnh
+                        const actualIndex = (currentPage - 1) * perPage + i;
+                        const imageUrl = paginatedPages[i].urls.original;
+                        const fileName = `${folderNameResult}_${imageId}_p${actualIndex}.jpg`;
 
-                        // Tải ảnh và convert sang base64
                         const response = await axios({
                             method: 'get',
                             url: imageUrl,
@@ -160,16 +328,32 @@ app.post('/download', async (req, res) => {
                         const base64Image = Buffer.from(response.data, 'binary').toString('base64');
 
                         results.push({
-                            page: i,
+                            page: actualIndex,
                             fileName: fileName,
                             base64Data: `data:image/jpeg;base64,${base64Image}`,
                         });
                     } catch (error) {
-                        errors.push(`Lỗi khi tải ảnh trang ${i}: ${error.message}`);
+                        errors.push(`Lỗi khi tải ảnh trang ${(currentPage - 1) * perPage + i}: ${error.message}`);
                     }
                 }
+
+                res.json({
+                    success: true,
+                    folderName: folderNameResult,
+                    imageId: imageId,
+                    title: artworkInfo.title,
+                    totalArtworkPages: artworkPageCount,
+                    pagination: {
+                        currentPage,
+                        perPage,
+                        totalImages,
+                        totalPages,
+                    },
+                    images: results,
+                    errors: errors,
+                });
             } else {
-                // Xử lý một trang
+                // Ảnh chỉ có 1 trang, không cần phân trang
                 try {
                     const imageUrl = artworkInfo.urls.original;
                     const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
@@ -194,38 +378,43 @@ app.post('/download', async (req, res) => {
                 } catch (error) {
                     errors.push(`Lỗi khi tải ảnh: ${error.message}`);
                 }
-            }
 
-            res.json({
-                success: true,
-                folderName: folderNameResult,
-                imageId: imageId,
-                title: artworkInfo.title,
-                totalPages: pageCount,
-                images: results,
-                errors: errors,
-            });
+                res.json({
+                    success: true,
+                    folderName: folderNameResult,
+                    imageId: imageId,
+                    title: artworkInfo.title,
+                    totalArtworkPages: artworkPageCount,
+                    pagination: {
+                        currentPage: 1,
+                        perPage: 1,
+                        totalImages: 1,
+                        totalPages: 1,
+                    },
+                    images: results,
+                    errors: errors,
+                });
+            }
         } else {
-            // Mode browser: trước đây bạn tạo file ZIP trên ổ đĩa, giờ thay bằng streaming
+            // Chế độ browser: giữ nguyên như cũ (tải toàn bộ ảnh và tạo file ZIP)
             const zipFileName = `${folderNameResult}_${imageId}.zip`;
-            // Thiết lập header cho file ZIP
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`);
             res.setHeader('Content-Type', 'application/zip');
 
-            // Tạo archive và pipe trực tiếp vào response
             const archive = require('archiver')('zip', { zlib: { level: 9 } });
             archive.on('error', (err) => {
                 throw err;
             });
             archive.pipe(res);
 
-            if (pageCount > 1) {
-                const pagesInfo = await axios.get(
+            if (artworkPageCount > 1) {
+                const pagesResponse = await axios.get(
                     `https://www.pixiv.net/ajax/illust/${imageId}/pages`,
                     getConfig(session)
                 );
-                for (let i = 0; i < pagesInfo.data.body.length; i++) {
-                    const imageUrl = pagesInfo.data.body[i].urls.original;
+
+                for (let i = 0; i < pagesResponse.data.body.length; i++) {
+                    const imageUrl = pagesResponse.data.body[i].urls.original;
                     const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
                     const response = await axios({
                         method: 'get',
@@ -253,7 +442,6 @@ app.post('/download', async (req, res) => {
                 archive.append(response.data, { name: fileName });
             }
 
-            // Khi tất cả ảnh đã được thêm vào archive, finalize để kết thúc stream
             archive.finalize();
         }
     } catch (error) {
