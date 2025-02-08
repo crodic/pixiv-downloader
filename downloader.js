@@ -295,9 +295,9 @@ app.post('/download', async (req, res) => {
                 );
                 const allPages = pagesResponse.data.body;
                 const totalImages = allPages.length;
-                // Thiết lập phân trang (mặc định trang 1, mỗi trang 20 ảnh)
+                // Thiết lập phân trang (mặc định trang 1, mỗi trang 5 ảnh)
                 const currentPage = page && Number(page) > 0 ? Number(page) : 1;
-                const perPage = limit && Number(limit) > 0 ? Number(limit) : 20;
+                const perPage = limit && Number(limit) > 0 ? Number(limit) : 5;
                 const totalPages = Math.ceil(totalImages / perPage);
 
                 if (currentPage > totalPages) {
