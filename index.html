@@ -177,11 +177,9 @@
 
                 const byteCharacters = atob(base64Content);
                 const byteNumbers = new Array(byteCharacters.length);
-
                 for (let i = 0; i < byteCharacters.length; i++) {
                     byteNumbers[i] = byteCharacters.charCodeAt(i);
                 }
-
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], { type: 'image/jpeg' });
 
@@ -253,10 +251,10 @@
                 const imageGrid = document.getElementById('imageGrid');
                 const info = document.getElementById('info');
 
+                // Lưu session vào localStorage nếu có
                 if (session) {
                     localStorage.setItem('PHPSESSID', session);
                 }
-
                 if (!session && localStorage.getItem('PHPSESSID')) {
                     session = localStorage.getItem('PHPSESSID');
                 }
@@ -269,6 +267,7 @@
                 errorDiv.textContent = '';
                 loadingDiv.style.display = 'block';
                 imageGrid.innerHTML = '';
+                info.innerHTML = '';
 
                 try {
                     const res = await fetch('/download', {
@@ -277,23 +276,31 @@
                         body: JSON.stringify({ imageId, folderName, mode, session }),
                     });
 
+                    // Nếu là chế độ server thì nhận JSON về hiển thị ảnh, còn browser sẽ nhận file ZIP stream về
                     if (mode === 'server') {
                         const data = await res.json();
+
+                        if (!res.ok) {
+                            throw new Error(data.error || 'Có lỗi xảy ra trong quá trình tải');
+                        }
+
+                        // Hiển thị lỗi nếu có
                         if (data.errors && data.errors.length > 0) {
                             errorDiv.textContent = data.errors.join('\n');
                         }
 
-                        downloadedImages = data.images;
+                        downloadedImages = data.images || [];
 
                         info.innerHTML = `
-                            <h3>Thông tin tải xuống</h3>
-                            <p>Folder: ${data.folderName}</p>
-                            <p>Image ID: ${data.imageId}</p>
-                            <p>Số ảnh đã tải: ${data.images.length}/${data.totalPages}</p>
-                        `;
+              <h3>Thông tin tải xuống</h3>
+              <p>Folder: ${data.folderName}</p>
+              <p>Image ID: ${data.imageId}</p>
+              <p>Title: ${data.title || 'N/A'}</p>
+              <p>Số ảnh đã tải: ${downloadedImages.length} / ${data.totalPages}</p>
+            `;
 
                         // Hiển thị ảnh từ base64
-                        data.images.forEach((image, index) => {
+                        downloadedImages.forEach((image, index) => {
                             const container = document.createElement('div');
                             container.className = 'image-container';
 
@@ -319,6 +326,7 @@
 
                         document.getElementById('downloadOptions').classList.add('visible');
                     } else {
+                        // Browser mode: tải về file ZIP trực tiếp
                         if (!res.ok) {
                             const errText = await res.text();
                             throw new Error(errText);
@@ -340,7 +348,7 @@
                 }
             }
         </script>
-        <!-- Add JSZip library for client-side ZIP creation -->
+        <!-- Thư viện JSZip dùng cho việc tạo file ZIP ở client (chỉ dùng khi người dùng download selected) -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     </body>
 </html>
