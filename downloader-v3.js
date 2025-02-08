@@ -3,7 +3,6 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const archiver = require('archiver');
 require('dotenv').config();
 
 const app = express();
@@ -49,28 +48,6 @@ async function getArtworkInfo(imageId, session) {
 
 const sanitizeFilename = (name) => name.replace(/[\/\\:*?"<>|]/g, '_');
 
-async function downloadImage(imageUrl, filePath, config) {
-    return new Promise((resolve, reject) => {
-        axios({
-            method: 'get',
-            url: imageUrl,
-            responseType: 'stream',
-            headers: {
-                ...config.headers,
-                Referer: 'https://www.pixiv.net/',
-            },
-        })
-            .then((response) => {
-                const writer = fs.createWriteStream(filePath);
-                response.data.pipe(writer);
-
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            })
-            .catch(reject);
-    });
-}
-
 // Endpoint mới để tải ảnh trực tiếp qua trình duyệt
 app.get('/download-image/:imageId/:page', async (req, res) => {
     try {
@@ -112,34 +89,7 @@ app.get('/download-image/:imageId/:page', async (req, res) => {
     }
 });
 
-// New endpoint to handle downloading selected images as ZIP
-app.post('/download-selected', async (req, res) => {
-    try {
-        const { selectedFiles, folderName } = req.body;
-        const zipFileName = `${folderName}_selected.zip`;
-
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`);
-        res.setHeader('Content-Type', 'application/zip');
-
-        const archive = archiver('zip', { zlib: { level: 9 } });
-        archive.pipe(res);
-
-        // Add each selected file to the archive
-        for (const filePath of selectedFiles) {
-            const fullPath = path.join(__dirname, filePath);
-            if (fs.existsSync(fullPath)) {
-                archive.file(fullPath, { name: path.basename(filePath) });
-            }
-        }
-
-        archive.finalize();
-    } catch (error) {
-        console.error('Error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Original download endpoint with modified response for server mode
+// Cập nhật endpoint download để hỗ trợ hai chế độ
 app.post('/download', async (req, res) => {
     try {
         const { imageId, folderName, mode = 'server' } = req.body;
@@ -321,6 +271,7 @@ app.post('/download', async (req, res) => {
     }
 });
 
+// [Phần còn lại giữ nguyên]
 app.use('/downloads', express.static('downloads'));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.listen(PORT, () => console.log(`Server chạy trên port ${PORT}`));

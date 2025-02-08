@@ -89,40 +89,9 @@
                 text-align: center;
                 color: #0066cc;
             }
-            .image-container {
-                position: relative;
-                border: 2px solid transparent;
-            }
-
-            .image-container.selected {
-                border-color: #0066cc;
-            }
-
-            .select-checkbox {
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                width: 20px;
-                height: 20px;
-                z-index: 1;
-            }
-
-            .download-options {
-                margin-top: 20px;
-                display: none;
-            }
-
-            .download-options.visible {
-                display: block;
-            }
-
-            .download-button {
-                margin-right: 10px;
-            }
         </style>
     </head>
     <body>
-        <!-- Previous HTML structure remains the same until the download options -->
         <div class="container">
             <h1>Pixiv Image Downloader</h1>
             <div class="input-group">
@@ -143,99 +112,14 @@
                 </div>
                 <button id="downloadBtn" onclick="downloadImages()">Tải ảnh</button>
             </div>
-            <div id="downloadOptions" class="download-options">
-                <button onclick="downloadSelectedAsZip()" class="download-button">Download Selected as ZIP</button>
-                <button onclick="downloadSelectedIndividually()" class="download-button">
-                    Download Selected Individually
-                </button>
-                <button onclick="selectAll()" class="download-button">Select All</button>
-                <button onclick="deselectAll()" class="download-button">Deselect All</button>
-            </div>
-
             <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi...</div>
             <div id="info" class="info"></div>
             <div id="error" class="error"></div>
             <div id="imageGrid" class="image-grid"></div>
+            <div id="downloadLinks" class="download-links"></div>
         </div>
 
         <script>
-            let downloadedFiles = [];
-
-            function selectAll() {
-                const checkboxes = document.querySelectorAll('.select-checkbox');
-                checkboxes.forEach((checkbox) => {
-                    checkbox.checked = true;
-                    checkbox.parentElement.classList.add('selected');
-                });
-            }
-
-            function deselectAll() {
-                const checkboxes = document.querySelectorAll('.select-checkbox');
-                checkboxes.forEach((checkbox) => {
-                    checkbox.checked = false;
-                    checkbox.parentElement.classList.remove('selected');
-                });
-            }
-
-            function toggleSelection(checkbox, container) {
-                container.classList.toggle('selected', checkbox.checked);
-            }
-
-            async function downloadSelectedAsZip() {
-                const selectedFiles = Array.from(document.querySelectorAll('.select-checkbox:checked')).map(
-                    (checkbox) => checkbox.dataset.path
-                );
-
-                if (selectedFiles.length === 0) {
-                    document.getElementById('error').textContent = 'Please select at least one image';
-                    return;
-                }
-
-                const folderName = document.getElementById('folderName').value;
-
-                try {
-                    const response = await fetch('/download-selected', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ selectedFiles, folderName }),
-                    });
-
-                    if (!response.ok) throw new Error('Download failed');
-
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${folderName}_selected.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                } catch (error) {
-                    document.getElementById('error').textContent = error.message;
-                }
-            }
-
-            async function downloadSelectedIndividually() {
-                const selectedCheckboxes = document.querySelectorAll('.select-checkbox:checked');
-
-                if (selectedCheckboxes.length === 0) {
-                    document.getElementById('error').textContent = 'Please select at least one image';
-                    return;
-                }
-
-                selectedCheckboxes.forEach((checkbox) => {
-                    const path = checkbox.dataset.path;
-                    const fileName = checkbox.dataset.filename;
-                    const a = document.createElement('a');
-                    a.href = path;
-                    a.download = fileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                });
-            }
-
             async function downloadImages() {
                 let session = document.getElementById('phpsession').value;
                 const imageId = document.getElementById('imageId').value;
@@ -268,53 +152,8 @@
                         body: JSON.stringify({ imageId, folderName, mode, session }),
                     });
 
-                    if (mode === 'server') {
-                        const data = await res.json();
-                        if (data.errors && data.errors.length > 0) {
-                            error.textContent = data.errors.join('\n');
-                        }
-
-                        downloadedFiles = data.downloadedFiles;
-
-                        info.innerHTML = `
-                    <h3>Thông tin tải xuống</h3>
-                    <p>Folder: ${data.folderName}</p>
-                    <p>Image ID: ${data.imageId}</p>
-                    <p>Số ảnh đã tải: ${data.downloadedFiles.length}/${data.totalPages}</p>
-                `;
-
-                        // Clear previous images
-                        imageGrid.innerHTML = '';
-
-                        // Display downloaded images with checkboxes
-                        data.downloadedFiles.forEach((file) => {
-                            const container = document.createElement('div');
-                            container.className = 'image-container';
-
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.className = 'select-checkbox';
-                            checkbox.dataset.path = file.path;
-                            checkbox.dataset.filename = file.fileName;
-                            checkbox.onchange = () => toggleSelection(checkbox, container);
-
-                            const img = document.createElement('img');
-                            img.src = file.path;
-                            img.className = 'image-preview';
-
-                            const fileName = document.createElement('div');
-                            fileName.className = 'file-name';
-                            fileName.textContent = file.fileName;
-
-                            container.appendChild(checkbox);
-                            container.appendChild(img);
-                            container.appendChild(fileName);
-                            imageGrid.appendChild(container);
-                        });
-
-                        // Show download options
-                        document.getElementById('downloadOptions').classList.add('visible');
-                    } else {
+                    // Nếu mode là browser, server stream file ZIP nên dùng blob
+                    if (mode === 'browser') {
                         if (!res.ok) {
                             const errText = await res.text();
                             throw new Error(errText);
@@ -327,8 +166,40 @@
                         document.body.appendChild(a);
                         a.click();
                         a.remove();
+                    } else {
+                        // Nếu mode là server, server trả về JSON thông tin file đã tải
+                        const data = await res.json();
+                        // Xử lý dữ liệu JSON (ví dụ hiển thị thông tin ảnh, link tải, ...)
+                        if (data.errors && data.errors.length > 0) {
+                            error.textContent = data.errors.join('\n');
+                        }
+
+                        info.innerHTML = `
+                            <h3>Thông tin tải xuống</h3>
+                            <p>Folder: ${data.folderName}</p>
+                            <p>Image ID: ${data.imageId}</p>
+                            <p>Số ảnh đã tải: ${data.downloadedFiles.length}/${data.totalPages}</p>
+                        `;
+                        console.log('Trigger');
+                        // Hiển thị tất cả các ảnh đã tải
+                        data.downloadedFiles.forEach((file) => {
+                            const container = document.createElement('div');
+                            container.className = 'image-container';
+
+                            const img = document.createElement('img');
+                            img.src = file.path;
+                            img.className = 'image-preview';
+
+                            const fileName = document.createElement('div');
+                            fileName.className = 'file-name';
+                            fileName.textContent = file.fileName;
+
+                            container.appendChild(img);
+                            container.appendChild(fileName);
+                            imageGrid.appendChild(container);
+                        });
                     }
-                } catch (error) {
+                } catch (err) {
                     errorDiv.textContent = err.message;
                 } finally {
                     loadingDiv.style.display = 'none';
