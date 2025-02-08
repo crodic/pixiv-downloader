@@ -50,6 +50,10 @@
             }
             .image-container {
                 position: relative;
+                border: 2px solid transparent;
+            }
+            .image-container.selected {
+                border-color: #0066cc;
             }
             .image-preview {
                 width: 100%;
@@ -80,24 +84,12 @@
                 border-radius: 4px;
                 margin-top: 10px;
             }
-            .download-links {
-                margin-top: 20px;
-            }
             .loading {
                 display: none;
                 margin-top: 10px;
                 text-align: center;
                 color: #0066cc;
             }
-            .image-container {
-                position: relative;
-                border: 2px solid transparent;
-            }
-
-            .image-container.selected {
-                border-color: #0066cc;
-            }
-
             .select-checkbox {
                 position: absolute;
                 top: 10px;
@@ -106,23 +98,21 @@
                 height: 20px;
                 z-index: 1;
             }
-
             .download-options {
                 margin-top: 20px;
                 display: none;
             }
-
             .download-options.visible {
-                display: block;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
             }
-
             .download-button {
                 margin-right: 10px;
             }
         </style>
     </head>
     <body>
-        <!-- Previous HTML structure remains the same until the download options -->
         <div class="container">
             <h1>Pixiv Image Downloader</h1>
             <div class="input-group">
@@ -159,7 +149,7 @@
         </div>
 
         <script>
-            let downloadedFiles = [];
+            let downloadedImages = [];
 
             function selectAll() {
                 const checkboxes = document.querySelectorAll('.select-checkbox');
@@ -181,58 +171,75 @@
                 container.classList.toggle('selected', checkbox.checked);
             }
 
+            function downloadBase64AsFile(base64Data, fileName) {
+                // Remove data URL prefix if present
+                const base64Content = base64Data.includes('base64,') ? base64Data.split('base64,')[1] : base64Data;
+
+                const byteCharacters = atob(base64Content);
+                const byteNumbers = new Array(byteCharacters.length);
+
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }
+
             async function downloadSelectedAsZip() {
-                const selectedFiles = Array.from(document.querySelectorAll('.select-checkbox:checked')).map(
-                    (checkbox) => checkbox.dataset.path
+                const selectedImages = Array.from(document.querySelectorAll('.select-checkbox:checked')).map(
+                    (checkbox) => {
+                        const index = checkbox.dataset.index;
+                        return downloadedImages[index];
+                    }
                 );
 
-                if (selectedFiles.length === 0) {
-                    document.getElementById('error').textContent = 'Please select at least one image';
+                if (selectedImages.length === 0) {
+                    document.getElementById('error').textContent = 'Vui lòng chọn ít nhất một ảnh';
                     return;
                 }
 
-                const folderName = document.getElementById('folderName').value;
+                // Sử dụng JSZip để tạo file ZIP ở client
+                const JSZip = window.JSZip;
+                const zip = new JSZip();
 
-                try {
-                    const response = await fetch('/download-selected', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ selectedFiles, folderName }),
-                    });
+                selectedImages.forEach((image) => {
+                    const base64Content = image.base64Data.split('base64,')[1];
+                    zip.file(image.fileName, base64Content, { base64: true });
+                });
 
-                    if (!response.ok) throw new Error('Download failed');
-
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${folderName}_selected.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                } catch (error) {
-                    document.getElementById('error').textContent = error.message;
-                }
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${document.getElementById('folderName').value}_selected.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
             }
 
-            async function downloadSelectedIndividually() {
+            function downloadSelectedIndividually() {
                 const selectedCheckboxes = document.querySelectorAll('.select-checkbox:checked');
 
                 if (selectedCheckboxes.length === 0) {
-                    document.getElementById('error').textContent = 'Please select at least one image';
+                    document.getElementById('error').textContent = 'Vui lòng chọn ít nhất một ảnh';
                     return;
                 }
 
                 selectedCheckboxes.forEach((checkbox) => {
-                    const path = checkbox.dataset.path;
-                    const fileName = checkbox.dataset.filename;
-                    const a = document.createElement('a');
-                    a.href = path;
-                    a.download = fileName;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
+                    const index = checkbox.dataset.index;
+                    const image = downloadedImages[index];
+                    downloadBase64AsFile(image.base64Data, image.fileName);
                 });
             }
 
@@ -244,6 +251,7 @@
                 const errorDiv = document.getElementById('error');
                 const loadingDiv = document.getElementById('loading');
                 const imageGrid = document.getElementById('imageGrid');
+                const info = document.getElementById('info');
 
                 if (session) {
                     localStorage.setItem('PHPSESSID', session);
@@ -260,6 +268,7 @@
 
                 errorDiv.textContent = '';
                 loadingDiv.style.display = 'block';
+                imageGrid.innerHTML = '';
 
                 try {
                     const res = await fetch('/download', {
@@ -271,40 +280,36 @@
                     if (mode === 'server') {
                         const data = await res.json();
                         if (data.errors && data.errors.length > 0) {
-                            error.textContent = data.errors.join('\n');
+                            errorDiv.textContent = data.errors.join('\n');
                         }
 
-                        downloadedFiles = data.downloadedFiles;
+                        downloadedImages = data.images;
 
                         info.innerHTML = `
-                    <h3>Thông tin tải xuống</h3>
-                    <p>Folder: ${data.folderName}</p>
-                    <p>Image ID: ${data.imageId}</p>
-                    <p>Số ảnh đã tải: ${data.downloadedFiles.length}/${data.totalPages}</p>
-                `;
+                            <h3>Thông tin tải xuống</h3>
+                            <p>Folder: ${data.folderName}</p>
+                            <p>Image ID: ${data.imageId}</p>
+                            <p>Số ảnh đã tải: ${data.images.length}/${data.totalPages}</p>
+                        `;
 
-                        // Clear previous images
-                        imageGrid.innerHTML = '';
-
-                        // Display downloaded images with checkboxes
-                        data.downloadedFiles.forEach((file) => {
+                        // Hiển thị ảnh từ base64
+                        data.images.forEach((image, index) => {
                             const container = document.createElement('div');
                             container.className = 'image-container';
 
                             const checkbox = document.createElement('input');
                             checkbox.type = 'checkbox';
                             checkbox.className = 'select-checkbox';
-                            checkbox.dataset.path = file.path;
-                            checkbox.dataset.filename = file.fileName;
+                            checkbox.dataset.index = index;
                             checkbox.onchange = () => toggleSelection(checkbox, container);
 
                             const img = document.createElement('img');
-                            img.src = file.path;
+                            img.src = image.base64Data;
                             img.className = 'image-preview';
 
                             const fileName = document.createElement('div');
                             fileName.className = 'file-name';
-                            fileName.textContent = file.fileName;
+                            fileName.textContent = image.fileName;
 
                             container.appendChild(checkbox);
                             container.appendChild(img);
@@ -312,7 +317,6 @@
                             imageGrid.appendChild(container);
                         });
 
-                        // Show download options
                         document.getElementById('downloadOptions').classList.add('visible');
                     } else {
                         if (!res.ok) {
@@ -327,13 +331,16 @@
                         document.body.appendChild(a);
                         a.click();
                         a.remove();
+                        window.URL.revokeObjectURL(downloadUrl);
                     }
-                } catch (error) {
+                } catch (err) {
                     errorDiv.textContent = err.message;
                 } finally {
                     loadingDiv.style.display = 'none';
                 }
             }
         </script>
+        <!-- Add JSZip library for client-side ZIP creation -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     </body>
 </html>

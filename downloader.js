@@ -49,29 +49,6 @@ async function getArtworkInfo(imageId, session) {
 
 const sanitizeFilename = (name) => name.replace(/[\/\\:*?"<>|]/g, '_');
 
-async function downloadImage(imageUrl, filePath, config) {
-    return new Promise((resolve, reject) => {
-        axios({
-            method: 'get',
-            url: imageUrl,
-            responseType: 'stream',
-            headers: {
-                ...config.headers,
-                Referer: 'https://www.pixiv.net/',
-            },
-        })
-            .then((response) => {
-                const writer = fs.createWriteStream(filePath);
-                response.data.pipe(writer);
-
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            })
-            .catch(reject);
-    });
-}
-
-// Endpoint mới để tải ảnh trực tiếp qua trình duyệt
 app.get('/download-image/:imageId/:page', async (req, res) => {
     try {
         const { imageId, page } = req.params;
@@ -90,11 +67,9 @@ app.get('/download-image/:imageId/:page', async (req, res) => {
             imageUrl = artworkInfo.urls.original;
         }
 
-        // Thiết lập headers để trigger download
         res.setHeader('Content-Disposition', `attachment; filename="${filename || `${imageId}_p${page}.jpg`}"`);
         res.setHeader('Content-Type', 'image/jpeg');
 
-        // Proxy hình ảnh từ Pixiv
         const response = await axios({
             method: 'get',
             url: imageUrl,
@@ -112,7 +87,6 @@ app.get('/download-image/:imageId/:page', async (req, res) => {
     }
 });
 
-// New endpoint to handle downloading selected images as ZIP
 app.post('/download-selected', async (req, res) => {
     try {
         const { selectedFiles, folderName } = req.body;
@@ -139,7 +113,6 @@ app.post('/download-selected', async (req, res) => {
     }
 });
 
-// Original download endpoint with modified response for server mode
 app.post('/download', async (req, res) => {
     try {
         const { imageId, folderName, mode = 'server' } = req.body;
@@ -158,20 +131,10 @@ app.post('/download', async (req, res) => {
         const pageCount = artworkInfo.pageCount;
 
         if (mode === 'server') {
-            const downloadsPath = path.join(__dirname, 'downloads');
-            if (!fs.existsSync(downloadsPath)) {
-                fs.mkdirSync(downloadsPath);
-            }
-
-            const downloadPath = path.join(downloadsPath, folderNameResult);
-            if (!fs.existsSync(downloadPath)) {
-                fs.mkdirSync(downloadPath);
-            }
-
             const results = [];
             const errors = [];
 
-            // Tải các trang từ API pages nếu có nhiều trang
+            // Xử lý nhiều trang
             if (pageCount > 1) {
                 const pagesInfo = await axios.get(
                     `https://www.pixiv.net/ajax/illust/${imageId}/pages`,
@@ -182,70 +145,51 @@ app.post('/download', async (req, res) => {
                     try {
                         const imageUrl = pagesInfo.data.body[i].urls.original;
                         const fileName = `${folderNameResult}_${imageId}_p${i}.jpg`;
-                        const filePath = path.join(downloadPath, fileName);
 
-                        if (!fs.existsSync(filePath)) {
-                            await new Promise((resolve, reject) => {
-                                const writer = fs.createWriteStream(filePath);
-                                axios({
-                                    method: 'get',
-                                    url: imageUrl,
-                                    responseType: 'stream',
-                                    headers: {
-                                        ...getConfig(session).headers,
-                                        Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
-                                    },
-                                })
-                                    .then((response) => {
-                                        response.data.pipe(writer);
-                                        writer.on('finish', resolve);
-                                        writer.on('error', reject);
-                                    })
-                                    .catch(reject);
-                            });
-                        }
+                        // Tải ảnh và convert sang base64
+                        const response = await axios({
+                            method: 'get',
+                            url: imageUrl,
+                            responseType: 'arraybuffer',
+                            headers: {
+                                ...getConfig(session).headers,
+                                Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+                            },
+                        });
+
+                        const base64Image = Buffer.from(response.data, 'binary').toString('base64');
 
                         results.push({
                             page: i,
                             fileName: fileName,
-                            path: `/downloads/${folderNameResult}/${fileName}`,
+                            base64Data: `data:image/jpeg;base64,${base64Image}`,
                         });
                     } catch (error) {
                         errors.push(`Lỗi khi tải ảnh trang ${i}: ${error.message}`);
                     }
                 }
             } else {
-                // Trường hợp chỉ có một ảnh
+                // Xử lý một trang
                 try {
                     const imageUrl = artworkInfo.urls.original;
                     const fileName = `${folderNameResult}_${imageId}_p0.jpg`;
-                    const filePath = path.join(downloadPath, fileName);
 
-                    if (!fs.existsSync(filePath)) {
-                        await new Promise((resolve, reject) => {
-                            const writer = fs.createWriteStream(filePath);
-                            axios({
-                                method: 'get',
-                                url: imageUrl,
-                                responseType: 'stream',
-                                headers: {
-                                    ...getConfig(session).headers,
-                                    Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
-                                },
-                            })
-                                .then((response) => {
-                                    response.data.pipe(writer);
-                                    writer.on('finish', resolve);
-                                    writer.on('error', reject);
-                                })
-                                .catch(reject);
-                        });
-                    }
+                    const response = await axios({
+                        method: 'get',
+                        url: imageUrl,
+                        responseType: 'arraybuffer',
+                        headers: {
+                            ...getConfig(session).headers,
+                            Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
+                        },
+                    });
+
+                    const base64Image = Buffer.from(response.data, 'binary').toString('base64');
 
                     results.push({
                         page: 0,
                         fileName: fileName,
-                        path: `/downloads/${folderNameResult}/${fileName}`,
+                        base64Data: `data:image/jpeg;base64,${base64Image}`,
                     });
                 } catch (error) {
                     errors.push(`Lỗi khi tải ảnh: ${error.message}`);
@@ -258,7 +202,7 @@ app.post('/download', async (req, res) => {
                 imageId: imageId,
                 title: artworkInfo.title,
                 totalPages: pageCount,
-                downloadedFiles: results,
+                images: results,
                 errors: errors,
             });
         } else {
