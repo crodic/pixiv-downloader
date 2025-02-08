@@ -311,6 +311,10 @@
                     });
 
                     if (mode === 'server') {
+                        if (res.status === 502 || res.status === 504) {
+                            errorDiv.textContent = 'Server quá tải do có quá nhiều ảnh. Vui lòng lấy ít ảnh hơn.';
+                            return;
+                        }
                         const data = await res.json();
                         if (data.errors && data.errors.length > 0) {
                             errorDiv.textContent = data.errors.join('\n');
