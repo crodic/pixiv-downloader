@@ -312,7 +312,8 @@
 
                     if (mode === 'server') {
                         if (res.status === 502 || res.status === 504) {
-                            errorDiv.textContent = 'Server quá tải do có quá nhiều ảnh. Vui lòng lấy ít ảnh hơn.';
+                            errorDiv.textContent =
+                                'Server quá tải do có quá nhiều ảnh. Vui giảm số ảnh mỗi trang hoặc chọn Browser Mode.';
                             return;
                         }
                         const data = await res.json();
