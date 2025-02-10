@@ -381,8 +381,15 @@
                         const blob = await res.blob();
                         const downloadUrl = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
+                        let id;
+                        if (imageId.includes('pixiv.net/en/artworks/')) {
+                            const match = imageId.match(/artworks\/(\d+)/);
+                            if (match && match[1]) {
+                                id = match[1];
+                            }
+                        }
                         a.href = downloadUrl;
-                        a.download = `${folderName}_${imageId}.zip`;
+                        a.download = `${folderName}_${id}.zip`;
                         document.body.appendChild(a);
                         a.click();
                         a.remove();
