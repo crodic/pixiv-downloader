@@ -115,8 +115,15 @@ app.post('/download-selected', async (req, res) => {
 
 app.post('/download', async (req, res) => {
     try {
-        const { imageId, folderName, mode = 'server', page, limit } = req.body;
+        let { imageId, folderName, mode = 'server', page, limit } = req.body;
         const session = req.body.session;
+
+        if (imageId.includes('pixiv.net/en/artworks/')) {
+            const match = imageId.match(/artworks\/(\d+)/);
+            if (match && match[1]) {
+                imageId = match[1];
+            }
+        }
 
         if (!['server', 'browser'].includes(mode)) {
             throw new Error('Chế độ không hợp lệ. Dùng "server" hoặc "browser"');
