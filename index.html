@@ -381,7 +381,7 @@
                         const blob = await res.blob();
                         const downloadUrl = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
-                        let id;
+                        let id = imageId;
                         if (imageId.includes('pixiv.net/en/artworks/')) {
                             const match = imageId.match(/artworks\/(\d+)/);
                             if (match && match[1]) {
