@@ -42,6 +42,10 @@
             button:hover {
                 background-color: #0052a3;
             }
+            button:disabled {
+                background-color: #cccccc;
+                cursor: not-allowed;
+            }
             .error {
                 color: red;
                 margin-top: 10px;
@@ -65,6 +69,52 @@
                 margin-top: 10px;
                 display: none;
             }
+            .progress-container {
+                width: 100%;
+                background-color: #f3f3f3;
+                border-radius: 4px;
+                margin-top: 10px;
+                display: none;
+            }
+            .progress-bar {
+                height: 20px;
+                background-color: #4caf50;
+                border-radius: 4px;
+                width: 0%;
+                text-align: center;
+                line-height: 20px;
+                color: white;
+                transition: width 0.3s ease;
+            }
+            .dots-loading {
+                display: inline-block;
+            }
+            .dots-loading:after {
+                content: '.';
+                animation: dots 1.5s steps(5, end) infinite;
+            }
+            @keyframes dots {
+                0%,
+                20% {
+                    content: '.';
+                }
+                40% {
+                    content: '..';
+                }
+                60% {
+                    content: '...';
+                }
+                80%,
+                100% {
+                    content: '';
+                }
+            }
+            .download-timer {
+                margin-top: 5px;
+                text-align: center;
+                font-size: 14px;
+                color: #666;
+            }
         </style>
     </head>
     <body>
@@ -83,8 +133,12 @@
                 <button id="downloadBtn" onclick="downloadImages()">Tải ảnh</button>
             </div>
 
-            <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi...</div>
+            <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi <span class="dots-loading"></span></div>
             <div id="status" class="status"></div>
+            <div id="progress-container" class="progress-container">
+                <div id="progress-bar" class="progress-bar">0%</div>
+            </div>
+            <div id="download-timer" class="download-timer"></div>
             <div id="info" class="info"></div>
             <div id="error" class="error"></div>
         </div>
@@ -103,6 +157,10 @@
                 const loadingDiv = document.getElementById('loading');
                 const statusDiv = document.getElementById('status');
                 const infoDiv = document.getElementById('info');
+                const progressContainer = document.getElementById('progress-container');
+                const progressBar = document.getElementById('progress-bar');
+                const downloadBtn = document.getElementById('downloadBtn');
+                const downloadTimer = document.getElementById('download-timer');
 
                 if (session) {
                     localStorage.setItem('PHPSESSID', session);
@@ -113,14 +171,50 @@
                     return;
                 }
 
+                // Reset UI
                 errorDiv.textContent = '';
                 loadingDiv.style.display = 'block';
                 statusDiv.style.display = 'block';
                 statusDiv.textContent = 'Đang chuẩn bị tải xuống...';
                 infoDiv.innerHTML = '';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
+                progressContainer.style.display = 'block';
+                downloadBtn.disabled = true;
+                downloadTimer.style.display = 'block';
+
+                // Start timer
+                const startTime = Date.now();
+                const timerInterval = setInterval(() => {
+                    const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                    const minutes = Math.floor(elapsedSeconds / 60);
+                    const seconds = elapsedSeconds % 60;
+                    downloadTimer.textContent = `Thời gian tải: ${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+                }, 1000);
+
+                // Simulate progress updates for better UX
+                let progress = 0;
+                const progressSimulation = setInterval(() => {
+                    // Slowly increase progress, capping at 90% until we confirm completion
+                    if (progress < 90) {
+                        progress += Math.random() * 3;
+                        progress = Math.min(progress, 90);
+                        progressBar.style.width = `${progress}%`;
+                        progressBar.textContent = `${Math.round(progress)}%`;
+                    }
+                }, 300);
 
                 try {
                     statusDiv.textContent = 'Đang kết nối đến server...';
+
+                    // Extract ID from URL if needed
+                    let id = imageId;
+                    if (imageId.includes('pixiv.net/en/artworks/')) {
+                        const match = imageId.match(/artworks\/(\d+)/);
+                        if (match && match[1]) {
+                            id = match[1];
+                        }
+                    }
 
                     const res = await fetch('/download-browser', {
                         method: 'POST',
@@ -143,18 +237,53 @@
 
                     statusDiv.textContent = 'Đang tải xuống file ZIP...';
 
-                    const blob = await res.blob();
-                    const downloadUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
+                    // For better UX with larger files, use ReadableStream to track download progress
+                    const contentLength = res.headers.get('Content-Length');
+                    let receivedLength = 0;
+                    const chunks = [];
 
-                    // Extract ID from URL if needed
-                    let id = imageId;
-                    if (imageId.includes('pixiv.net/en/artworks/')) {
-                        const match = imageId.match(/artworks\/(\d+)/);
-                        if (match && match[1]) {
-                            id = match[1];
+                    const reader = res.body.getReader();
+
+                    // Read the stream
+                    while (true) {
+                        const { done, value } = await reader.read();
+
+                        if (done) {
+                            break;
+                        }
+
+                        chunks.push(value);
+                        receivedLength += value.length;
+
+                        // Update progress if we know the total size
+                        if (contentLength) {
+                            const percentComplete = Math.round((receivedLength / parseInt(contentLength)) * 100);
+                            progressBar.style.width = `${percentComplete}%`;
+                            progressBar.textContent = `${percentComplete}%`;
+                            statusDiv.textContent = `Đang tải xuống: ${receivedLength} / ${contentLength} bytes`;
+                        } else {
+                            // If no content length, continue with simulated progress
+                            statusDiv.textContent = `Đã nhận: ${receivedLength} bytes`;
                         }
                     }
+
+                    // Set progress to 100% when download completes
+                    clearInterval(progressSimulation);
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100%';
+
+                    // Combine chunks into a single Uint8Array
+                    const chunksAll = new Uint8Array(receivedLength);
+                    let position = 0;
+                    for (const chunk of chunks) {
+                        chunksAll.set(chunk, position);
+                        position += chunk.length;
+                    }
+
+                    // Create blob and download
+                    const blob = new Blob([chunksAll]);
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
 
                     a.href = downloadUrl;
                     a.download = `${folderName}_${id}.zip`;
@@ -169,12 +298,17 @@
                         <p>Folder: ${folderName}</p>
                         <p>Image ID: ${id}</p>
                         <p>File: ${folderName}_${id}.zip</p>
+                        <p>Kích thước: ${(receivedLength / (1024 * 1024)).toFixed(2)} MB</p>
                     `;
                 } catch (err) {
                     statusDiv.textContent = 'Tải xuống thất bại!';
                     errorDiv.textContent = err.message;
+                    clearInterval(progressSimulation);
+                    progressBar.style.backgroundColor = '#ff4d4d';
                 } finally {
+                    clearInterval(timerInterval);
                     loadingDiv.style.display = 'none';
+                    downloadBtn.disabled = false;
                 }
             }
         </script>

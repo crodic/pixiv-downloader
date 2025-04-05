@@ -79,9 +79,25 @@ app.post('/download-browser', async (req, res) => {
         const zipFileName = `${folderNameResult}_${imageId}.zip`;
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`);
         res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('X-Total-Pages', artworkPageCount); // Adding total pages info for frontend
 
         // Create zip archive with streaming
         const archive = archiver('zip', { zlib: { level: 6 } }); // Lower compression to improve performance
+
+        // Set up archive size tracking to provide Content-Length
+        let archiveSize = 0;
+        archive.on('data', (chunk) => {
+            archiveSize += chunk.length;
+        });
+
+        // Handle archive warnings (non-fatal errors)
+        archive.on('warning', (err) => {
+            if (err.code === 'ENOENT') {
+                console.warn('Archive warning:', err);
+            } else {
+                console.error('Archive error:', err);
+            }
+        });
 
         // Handle archive errors
         archive.on('error', (err) => {
@@ -91,6 +107,14 @@ app.post('/download-browser', async (req, res) => {
                 res.status(500).json({ error: 'Archive creation failed' });
             }
         });
+
+        // Send progress events through headers
+        let processedPages = 0;
+        const sendProgress = () => {
+            if (!res.headersSent) {
+                res.setHeader('X-Progress', `${processedPages}/${artworkPageCount}`);
+            }
+        };
 
         // Pipe archive data to response
         archive.pipe(res);
@@ -130,17 +154,25 @@ app.post('/download-browser', async (req, res) => {
                                     ...getConfig(session).headers,
                                     Referer: `https://www.pixiv.net/en/artworks/${imageId}`,
                                 },
-                                timeout: 30000, // 30s timeout
+                                timeout: 500000, // 5m timeout
                             });
 
                             // Add the file to archive
                             archive.append(response.data, { name: fileName });
+
+                            // Update progress counter
+                            processedPages++;
+                            sendProgress();
                         } catch (error) {
                             console.error(`Error downloading image ${currentIndex}:`, error.message);
                             // Add error text file
                             archive.append(Buffer.from(`Failed to download image: ${error.message}`), {
                                 name: `${fileName}.error.txt`,
                             });
+
+                            // Still count as processed
+                            processedPages++;
+                            sendProgress();
                         } finally {
                             // Remove this promise from active set when done
                             activePromises.delete(downloadPromise);
@@ -173,11 +205,15 @@ app.post('/download-browser', async (req, res) => {
                 });
 
                 archive.append(response.data, { name: fileName });
+                processedPages = 1;
+                sendProgress();
             } catch (error) {
                 console.error('Error downloading single image:', error.message);
                 archive.append(Buffer.from(`Failed to download image: ${error.message}`), {
                     name: `${folderNameResult}_${imageId}_p0.jpg.error.txt`,
                 });
+                processedPages = 1;
+                sendProgress();
             }
         }
 
