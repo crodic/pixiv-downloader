@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Pixiv Image Downloader - Browser Mode</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            .container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .input-group {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .input-field {
+                flex: 1;
+                min-width: 200px;
+            }
+            input,
+            select {
+                padding: 8px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            button {
+                padding: 8px 16px;
+                background-color: #0066cc;
+                color: white;
+                border: none;
+                cursor: pointer;
+                min-width: 100px;
+            }
+            button:hover {
+                background-color: #0052a3;
+            }
+            .error {
+                color: red;
+                margin-top: 10px;
+            }
+            .info {
+                background-color: #f5f5f5;
+                padding: 15px;
+                border-radius: 4px;
+                margin-top: 10px;
+            }
+            .loading {
+                display: none;
+                margin-top: 10px;
+                text-align: center;
+                color: #0066cc;
+            }
+            .status {
+                background-color: #f0f8ff;
+                padding: 10px;
+                border-radius: 4px;
+                margin-top: 10px;
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Pixiv Image Downloader - Browser Mode</h1>
+            <div class="input-group">
+                <div class="input-field">
+                    <input type="text" id="phpsession" placeholder="Nhập cookie session" />
+                </div>
+                <div class="input-field">
+                    <input type="text" id="imageId" placeholder="Nhập Pixiv Image ID hoặc URL" />
+                </div>
+                <div class="input-field">
+                    <input type="text" id="folderName" placeholder="Nhập tên folder" />
+                </div>
+                <button id="downloadBtn" onclick="downloadImages()">Tải ảnh</button>
+            </div>
+
+            <div id="loading" class="loading">Đang tải ảnh, vui lòng đợi...</div>
+            <div id="status" class="status"></div>
+            <div id="info" class="info"></div>
+            <div id="error" class="error"></div>
+        </div>
+
+        <script>
+            // Lưu session vào localStorage nếu có
+            if (localStorage.getItem('PHPSESSID')) {
+                document.getElementById('phpsession').value = localStorage.getItem('PHPSESSID');
+            }
+
+            async function downloadImages() {
+                let session = document.getElementById('phpsession').value || localStorage.getItem('PHPSESSID') || '';
+                const imageId = document.getElementById('imageId').value;
+                const folderName = document.getElementById('folderName').value;
+                const errorDiv = document.getElementById('error');
+                const loadingDiv = document.getElementById('loading');
+                const statusDiv = document.getElementById('status');
+                const infoDiv = document.getElementById('info');
+
+                if (session) {
+                    localStorage.setItem('PHPSESSID', session);
+                }
+
+                if (!imageId || !folderName) {
+                    errorDiv.textContent = 'Vui lòng điền đầy đủ thông tin';
+                    return;
+                }
+
+                errorDiv.textContent = '';
+                loadingDiv.style.display = 'block';
+                statusDiv.style.display = 'block';
+                statusDiv.textContent = 'Đang chuẩn bị tải xuống...';
+                infoDiv.innerHTML = '';
+
+                try {
+                    statusDiv.textContent = 'Đang kết nối đến server...';
+
+                    const res = await fetch('/download-browser', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            imageId,
+                            folderName,
+                            session,
+                        }),
+                    });
+
+                    if (!res.ok) {
+                        if (res.status === 502 || res.status === 504) {
+                            throw new Error('Server quá tải. Vui lòng thử lại sau.');
+                        }
+
+                        const errorData = await res.json();
+                        throw new Error(errorData.error || 'Lỗi không xác định');
+                    }
+
+                    statusDiv.textContent = 'Đang tải xuống file ZIP...';
+
+                    const blob = await res.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+
+                    // Extract ID from URL if needed
+                    let id = imageId;
+                    if (imageId.includes('pixiv.net/en/artworks/')) {
+                        const match = imageId.match(/artworks\/(\d+)/);
+                        if (match && match[1]) {
+                            id = match[1];
+                        }
+                    }
+
+                    a.href = downloadUrl;
+                    a.download = `${folderName}_${id}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(downloadUrl);
+
+                    statusDiv.textContent = 'Tải xuống thành công!';
+                    infoDiv.innerHTML = `
+                        <h3>Thông tin tải xuống</h3>
+                        <p>Folder: ${folderName}</p>
+                        <p>Image ID: ${id}</p>
+                        <p>File: ${folderName}_${id}.zip</p>
+                    `;
+                } catch (err) {
+                    statusDiv.textContent = 'Tải xuống thất bại!';
+                    errorDiv.textContent = err.message;
+                } finally {
+                    loadingDiv.style.display = 'none';
+                }
+            }
+        </script>
+    </body>
+</html>
