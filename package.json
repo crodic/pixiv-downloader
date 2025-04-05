@@ -2,9 +2,9 @@
     "name": "pixiv",
     "version": "1.0.0",
     "description": "",
-    "main": "downloader.js",
+    "main": "browser-mode.js",
     "scripts": {
-        "start": "node downloader.js"
+        "start": "node browser-mode.js"
     },
     "keywords": [],
     "author": "",
